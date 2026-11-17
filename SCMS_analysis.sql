@@ -1,76 +1,71 @@
+-- SCMS Air vs Ocean Freight Analysis
+-- SQL queries run in DB Browser for SQLite on the cleaned SCMS data.
+-- Scope throughout: ARV product group, usable rows (valid weight + freight).
+
+
+-- Setup check: list tables in the database
 SELECT name FROM sqlite_master WHERE type='table';
 
-SELECT cost_per_kg from SCMS_Delivery_History_Dataset_new_one LIMIT 5;
 
-SELECT "Shipment Mode", "cost_per_kg" from SCMS_Delivery_History_Dataset_new_one LIMIT 10;
-
+-- Quick look at the cost per kg column
 SELECT "Shipment Mode", "cost_per_kg"
 FROM SCMS_Delivery_History_Dataset_new_one
-WHERE "Product Group" = 'ARV'
-AND "Shipment Mode" IN ('Air', 'Ocean')
-AND usable = 'Yes'
-LIMIT 10; 
-
-SELECT "Shipment Mode", count(*) as shipments
-from SCMS_Delivery_History_Dataset_new_one
-group by "Shipment Mode";
+LIMIT 10;
 
 
+-- H1: Average cost per kg, air vs ocean (the air premium)
 SELECT "Shipment Mode", Count(*) as shipments, avg(cast(cost_per_kg as REAL)) AS avg_cost_per_kg
-from SCMS_Delivery_History_Dataset_new_one
+FROM SCMS_Delivery_History_Dataset_new_one
 WHERE "Product Group" = 'ARV'
-and "Shipment Mode" in ('Air', 'Ocean')
-and usable = 'Yes'
+AND "Shipment Mode" in ('Air', 'Ocean')
+AND usable = 'Yes'
 GROUP by "Shipment mode";
 
+
+-- H2: Air shipments by weight band (how much air went to heavy loads)
 SELECT weight_bands, Count(*) as Shipments
-from SCMS_Delivery_History_Dataset_new_one
+FROM SCMS_Delivery_History_Dataset_new_one
 WHERE "Product Group" = 'ARV'
-and "Shipment Mode" = 'Air'
-and usable = 'Yes'
+AND "Shipment Mode" = 'Air'
+AND usable = 'Yes'
 GROUP by "weight_bands";
 
-SELECT weight_bands, "Line Item Value", freight_clean, CAST(freight_clean as REAL) / CAST("Line item value" as REAL) as freight_to_value
-FROM SCMS_Delivery_History_Dataset_new_one
-WHERE "Product GROUP" = 'ARV'
-AND "Shipment Mode" = 'Air'
-and usable = 'Yes'
-and "line item value" != '0'
-LIMIT 20;
 
-
+-- H3: Count of air shipments where freight cost more than the cargo was worth
 SELECT count(*) as high_ratio_shipments
-from SCMS_Delivery_History_Dataset_new_one
-WHERE "Product GROUP" = 'ARV'
-and "Shipment mode" = 'Air'
-and usable = 'Yes'
-and CAST(freight_clean as REAL) / CAST("line item value" as real) > 1;
-
-SELECT count(*) as late_shipments
-from SCMS_Delivery_History_Dataset_new_one
-WHERE "Product GROUP" = 'ARV'
+FROM SCMS_Delivery_History_Dataset_new_one
+WHERE "Product Group" = 'ARV'
+AND "Shipment mode" = 'Air'
 AND usable = 'Yes'
-and "Shipment mode" = 'Air'
-and CAST(delays as REAL) > 0;
+AND CAST(freight_clean as REAL) / CAST("line item value" as real) > 1;
 
+
+-- H4: Late shipments by mode (did air actually arrive on time)
 SELECT "Shipment mode", count(*) as late_count
-from SCMS_Delivery_History_Dataset_new_one
-WHERE "Product GROUP" = 'ARV'
-AND "Shipment mode" in('Air', 'Ocean')
-and usable = 'Yes'
+FROM SCMS_Delivery_History_Dataset_new_one
+WHERE "Product Group" = 'ARV'
+AND "Shipment mode" in ('Air', 'Ocean')
+AND usable = 'Yes'
 AND CAST(delays as REAL) > 0
 GROUP by "Shipment mode";
 
-SELECT sum(cast(freight_clean as REAL)) as total_air_fleight, sum(cast(weight_clean as real)) as total_weight 
-from SCMS_Delivery_History_Dataset_new_one
-WHERE "Product GROUP" = 'ARV'
-and "Shipment mode" = 'Air'
-and usable = 'Yes'
-and weight_bands = 'Heavy';
 
-SELECT sum(cast(freight_clean as REAL)) as total_ocean_fleight, sum(cast(weight_clean as REAL)) as total_ocean_weight
-from SCMS_Delivery_History_Dataset_new_one
-WHERE "Product GROUP" = 'ARV'
+-- H5 part 1: Total freight paid and total weight for heavy air shipments
+SELECT sum(cast(freight_clean as REAL)) as total_air_freight, sum(cast(weight_clean as real)) as total_weight
+FROM SCMS_Delivery_History_Dataset_new_one
+WHERE "Product Group" = 'ARV'
+AND "Shipment mode" = 'Air'
 AND usable = 'Yes'
-and "Shipment mode" = 'Ocean'
-and weight_bands = 'Heavy';
+AND weight_bands = 'Heavy';
+
+
+-- H5 part 2: Total freight and weight for heavy ocean shipments (to get ocean's heavy-band rate)
+SELECT sum(cast(freight_clean as REAL)) as total_ocean_freight, sum(cast(weight_clean as REAL)) as total_ocean_weight
+FROM SCMS_Delivery_History_Dataset_new_one
+WHERE "Product Group" = 'ARV'
+AND "Shipment mode" = 'Ocean'
+AND usable = 'Yes'
+AND weight_bands = 'Heavy';
+
+-- Savings estimate: heavy air freight paid minus (heavy air weight x ocean heavy rate of ~2.09)
+-- 17,031,934 - (3,561,139 x 2.09) = about 9.6M
